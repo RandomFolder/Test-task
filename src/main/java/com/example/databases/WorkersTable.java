@@ -8,9 +8,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
-
 import org.sqlite.Function;
-
 import com.example.constants.Constants;
 import com.example.records.Worker;
 import com.example.utils.Logger;
@@ -21,12 +19,12 @@ public class WorkersTable {
                 "(full_name TEXT check(full_name regexp '^[A-Z][a-z]+\\s[A-Z][a-z]+\\s[A-Z][a-z]+$'), " + //
                 "sex TEXT check(sex in ('male', 'female')) default 'female', " + //
                 "birth_date TEXT check(birth_date IS date(birth_date)));";
-    private final String SET_CASE_SENSATIVE = "PRAGMA case_sensitive_like = 1;";
-    private final String CREATE_INDEX_QUERY = "create index if not exists workers_index on workers (sex, full_name);";
+    private final String CREATE_INDEX_QUERY = "create index if not exists workers_index on workers (sex, substr(full_name, 1, 1));";
     private final String INSERT_QUERY = "insert into workers values (?, ?, ?);";
     private final String SELECT_UNIQUE_QUERY = "select * from workers group by full_name, birth_date having count(*) = 1 order by full_name;";
     private final String SELECT_MALES_QUERY_LIMITED = "select * from workers where sex = 'male' and full_name like 'F%' limit 100;";
     private final String SELECT_MALES_QUERY = "select * from workers where sex = 'male' and full_name like 'F%';";
+    private final String SELECT_MALES_QUERY_OPTIMIZED = "select * from workers where sex = 'male' and substr(full_name, 1, 1) = 'F';";
     private final String UPDATE_QUERY = "update workers set full_name = ?, birth_date = ?, sex = ? where full_name = ? and birth_date = ? and sex = ?;";
     private final String BEGIN_TRANSACTION_QUERY = "BEGIN;";
     private final String END_TRANSACTION_QUERY = "COMMIT;";
@@ -139,22 +137,23 @@ public class WorkersTable {
     }
 
     public void updateRows() {
+        System.out.println("\n|\tFull name\t|\tDate of birth\t|\tSex\t|\tAge\t|");
         for (Worker worker : this.select(SELECT_MALES_QUERY_LIMITED)) {
             Worker newWorker = RandomDataGenerator.generateRandomWorker();
+            worker.print();
 
             this.execute(UPDATE_QUERY, newWorker.fullName(), newWorker.dateOfBirth(), newWorker.sex(), worker.fullName(), worker.dateOfBirth(), worker.sex());
         }
     }
 
-    public void selectAllMales(boolean createIndex) {
-        if (createIndex) {
-            this.execute(SET_CASE_SENSATIVE);
+    public void selectAllMales(boolean optimize) {
+        if (optimize) {
             this.execute(CREATE_INDEX_QUERY);
         }
 
         long startTime = System.nanoTime();
 
-        List<Worker> workers = this.select(SELECT_MALES_QUERY);
+        List<Worker> workers = !optimize ? this.select(SELECT_MALES_QUERY) : this.select(SELECT_MALES_QUERY_OPTIMIZED);
 
         long executionTime = (System.nanoTime() - startTime) / 1000000;
 
@@ -163,6 +162,7 @@ public class WorkersTable {
             worker.print();
         }
 
+        System.out.println("Total records found: " + workers.size());
         System.out.println("Execution time: " + executionTime + " ms");
     }
 
